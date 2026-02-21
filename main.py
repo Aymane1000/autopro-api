@@ -9,7 +9,7 @@ from datetime import date
 # 1. CONFIGURATION BASE DE DONNÉES (SUPABASE)
 # ==========================================
 # ⚠️ ATTENTION: Bdell [YOUR-PASSWORD] b l'mot de passe dyalek s7i7 bla m39oufat []
-SQLALCHEMY_DATABASE_URL = "postgresql://postgres:[Yuuol00--ia123@dwndw7383834@SSccvv]@db.nkpwevsanpauwkqcoobg.supabase.co:5432/postgres"
+SQLALCHEMY_DATABASE_URL = "postgresql://postgres:AgenceAuto2026Pro@db.nkpwevsanpauwkqcoobg.supabase.co:5432/postgres"
 
 # 7iydna connect_args dyal SQLite 7it PostgreSQL pro w kheddam mzyan f l'Cloud
 engine = create_engine(SQLALCHEMY_DATABASE_URL)
