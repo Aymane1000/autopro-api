@@ -7,25 +7,26 @@ from pydantic import BaseModel
 from datetime import date
 
 # ==========================================
-# 1. CONFIGURATION DB (SUPABASE CLOUD PRO)
+# 1. CONFIGURATION DB (SUPABASE CLOUD - DEBUGGED)
 # ==========================================
-# Khdemna b Port 6543 dyal PgBouncer hit Render kiyhtaj Connection Pooling
-# sslmode=require darouriya bach l'Cloud y9bel l'connexion sécurisée
+# ⚠️ Drna PORT 6543 (Transaction Mode) hit Render kiy7taj Connection Pooling
+# ⚠️ Drna ?sslmode=require hit l'Cloud darori tkon l'connexion sécurisée
 SQLALCHEMY_DATABASE_URL = "postgresql://postgres:AgenceAuto2026Pro@db.nkpwevsanpauwkqcoobg.supabase.co:6543/postgres?sslmode=require"
 
-# pool_pre_ping: Bach n-testiw l'connexion qbel ma nkhdmo biha (ma-ytfach l'serveur)
+# ANALYSE SENIOR:
+# pool_pre_ping=True : Kat-testi l'khit m3a Supabase qbel ma y-crashi l'app
+# pool_recycle=300   : Kat-sded l'connection l9dima kola 5 min (Bach Supabase may-sddoch 3lik)
 engine = create_engine(
-    SQLALCHEMY_DATABASE_URL, 
+    SQLALCHEMY_DATABASE_URL,
     pool_pre_ping=True,
-    pool_size=10, 
-    max_overflow=20
+    pool_recycle=300,
+    pool_size=5,
+    max_overflow=10
 )
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 Base = declarative_base()
 
-# ==========================================
-# 2. MODÈLES DE BASE DE DONNÉES
-# ==========================================
+# --- MODÈLES (TABLES) ---
 class VoitureDB(Base):
     __tablename__ = "voitures"
     id = Column(Integer, primary_key=True, index=True)
@@ -44,7 +45,6 @@ class LocationDB(Base):
     montant_paye = Column(Float, default=0.0)
     caution = Column(String, default="Aucune")
     statut = Column(String, default="En cours")
-    
     voiture = relationship("VoitureDB")
 
 class DepenseDB(Base):
@@ -54,7 +54,6 @@ class DepenseDB(Base):
     categorie = Column(String) 
     montant = Column(Float)
     date_depense = Column(Date)
-    
     voiture = relationship("VoitureDB")
 
 class CreditDB(Base):
@@ -64,114 +63,58 @@ class CreditDB(Base):
     montant_total = Column(Float) 
     mensualite = Column(Float) 
     montant_paye = Column(Float, default=0.0) 
-    
     voiture = relationship("VoitureDB")
 
-# Create tables in Supabase
+# Create tables
 Base.metadata.create_all(bind=engine)
 
-# ==========================================
-# 3. SCHÉMAS PYDANTIC
-# ==========================================
-class VoitureCreate(BaseModel): 
-    marque: str
-    matricule: str
+# --- SCHÉMAS ---
+class VoitureCreate(BaseModel): marque: str; matricule: str
+class LocationCreate(BaseModel): voiture_id: int; date_sortie: date; jours: int; date_retour: date; prix_total: float; montant_paye: float; caution: str
+class PaiementUpdate(BaseModel): montant_ajoute: float
+class DepenseCreate(BaseModel): voiture_id: int; categorie: str; montant: float; date_depense: date
+class CreditCreate(BaseModel): voiture_id: int; montant_total: float; mensualite: float
+class LoginData(BaseModel): username: str; password: str
 
-class LocationCreate(BaseModel): 
-    voiture_id: int
-    date_sortie: date
-    jours: int
-    date_retour: date
-    prix_total: float
-    montant_paye: float
-    caution: str
-
-class PaiementUpdate(BaseModel): 
-    montant_ajoute: float
-
-class DepenseCreate(BaseModel): 
-    voiture_id: int
-    categorie: str
-    montant: float
-    date_depense: date
-
-class CreditCreate(BaseModel): 
-    voiture_id: int
-    montant_total: float
-    mensualite: float
-
-class LoginData(BaseModel): 
-    username: str
-    password: str
-
-# ==========================================
-# 4. APP & MIDDLEWARE
-# ==========================================
+# --- APP ---
 app = FastAPI(title="AutoPro ERP Cloud")
-
-app.add_middleware(
-    CORSMiddleware, 
-    allow_origins=["*"], 
-    allow_credentials=True, 
-    allow_methods=["*"], 
-    allow_headers=["*"]
-)
+app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_credentials=True, allow_methods=["*"], allow_headers=["*"])
 
 def get_db():
     db = SessionLocal()
-    try: 
-        yield db
-    finally: 
-        db.close()
+    try: yield db
+    finally: db.close()
 
-# ==========================================
-# 5. ROUTES API
-# ==========================================
-
+# --- APIs ---
 @app.post("/api/login/")
 def login(data: LoginData):
     if data.username == "admin" and data.password == "agence2026":
         return {"success": True}
-    raise HTTPException(status_code=401, detail="Error")
+    raise HTTPException(status_code=401)
 
 @app.get("/api/voitures/")
-def get_voitures(db: Session = Depends(get_db)):
-    return db.query(VoitureDB).all()
+def get_voitures(db: Session = Depends(get_db)): return db.query(VoitureDB).all()
 
 @app.post("/api/voitures/")
 def add_voiture(v: VoitureCreate, db: Session = Depends(get_db)):
-    db_v = VoitureDB(**v.dict())
-    db.add(db_v)
-    db.commit()
-    return {"message": "ok"}
-
-@app.post("/api/locations/")
-def add_location(loc: LocationCreate, db: Session = Depends(get_db)):
-    db_loc = LocationDB(**loc.dict())
-    db.add(db_loc)
-    v = db.query(VoitureDB).filter(VoitureDB.id == loc.voiture_id).first()
-    if v: v.statut = "En Location"
-    db.commit()
-    return {"message": "ok"}
+    db_v = VoitureDB(**v.dict()); db.add(db_v); db.commit(); return {"ok": True}
 
 @app.get("/api/locations/")
 def get_locations(db: Session = Depends(get_db)):
     locations = db.query(LocationDB).order_by(LocationDB.id.desc()).all()
-    return [{
-        "id": l.id, "voiture_id": l.voiture_id, "marque": l.voiture.marque,
-        "matricule": l.voiture.matricule, "date_sortie": l.date_sortie,
-        "date_retour": l.date_retour, "jours": l.jours, "prix_total": l.prix_total,
-        "montant_paye": l.montant_paye, "reste": l.prix_total - l.montant_paye,
-        "caution": l.caution, "statut": l.statut
-    } for l in locations]
+    return [{"id": l.id, "marque": l.voiture.marque, "matricule": l.voiture.matricule, "date_sortie": l.date_sortie, "date_retour": l.date_retour, "prix_total": l.prix_total, "montant_paye": l.montant_paye, "reste": l.prix_total - l.montant_paye, "caution": l.caution, "statut": l.statut} for l in locations]
+
+@app.post("/api/locations/")
+def add_location(loc: LocationCreate, db: Session = Depends(get_db)):
+    db_loc = LocationDB(**loc.dict()); db.add(db_loc)
+    v = db.query(VoitureDB).filter(VoitureDB.id == loc.voiture_id).first()
+    if v: v.statut = "En Location"
+    db.commit(); return {"ok": True}
 
 @app.put("/api/locations/{loc_id}/payer")
 def payer_reste(loc_id: int, p: PaiementUpdate, db: Session = Depends(get_db)):
     loc = db.query(LocationDB).filter(LocationDB.id == loc_id).first()
-    if loc:
-        loc.montant_paye += p.montant_ajoute
-        db.commit()
-    return {"message": "ok"}
+    if loc: loc.montant_paye += p.montant_ajoute; db.commit(); return {"ok": True}
 
 @app.put("/api/locations/{loc_id}/retourner")
 def retourner_voiture(loc_id: int, db: Session = Depends(get_db)):
@@ -180,39 +123,26 @@ def retourner_voiture(loc_id: int, db: Session = Depends(get_db)):
         loc.statut = "Terminée"
         v = db.query(VoitureDB).filter(VoitureDB.id == loc.voiture_id).first()
         if v: v.statut = "Disponible"
-        db.commit()
-    return {"message": "ok"}
-
-@app.post("/api/depenses/")
-def add_depense(dep: DepenseCreate, db: Session = Depends(get_db)):
-    db.add(DepenseDB(**dep.dict()))
-    db.commit()
-    return {"message": "ok"}
+        db.commit(); return {"ok": True}
 
 @app.get("/api/depenses/")
 def get_depenses(db: Session = Depends(get_db)):
-    deps = db.query(DepenseDB).all()
-    return [{"marque": d.voiture.marque, "montant": d.montant, "date": d.date_depense, "voiture_id": d.voiture_id} for d in deps]
+    return [{"marque": d.voiture.marque, "montant": d.montant, "date": d.date_depense} for d in db.query(DepenseDB).all()]
 
-@app.post("/api/credits/")
-def add_credit(c: CreditCreate, db: Session = Depends(get_db)):
-    db.add(CreditDB(**c.dict()))
-    db.commit()
-    return {"message": "ok"}
+@app.post("/api/depenses/")
+def add_depense(dep: DepenseCreate, db: Session = Depends(get_db)):
+    db.add(DepenseDB(**dep.dict())); db.commit(); return {"ok": True}
 
 @app.get("/api/credits/")
 def get_credits(db: Session = Depends(get_db)):
     credits = db.query(CreditDB).all()
-    return [{
-        "id": c.id, "marque": c.voiture.marque, "matricule": c.voiture.matricule,
-        "montant_total": c.montant_total, "mensualite": c.mensualite,
-        "montant_paye": c.montant_paye, "reste": c.montant_total - c.montant_paye
-    } for c in credits]
+    return [{"id": c.id, "marque": c.voiture.marque, "montant_total": c.montant_total, "mensualite": c.mensualite, "montant_paye": c.montant_paye, "reste": c.montant_total - c.montant_paye} for c in credits]
+
+@app.post("/api/credits/")
+def add_credit(c: CreditCreate, db: Session = Depends(get_db)):
+    db.add(CreditDB(**c.dict())); db.commit(); return {"ok": True}
 
 @app.put("/api/credits/{c_id}/payer")
 def payer_traita(c_id: int, db: Session = Depends(get_db)):
     c = db.query(CreditDB).filter(CreditDB.id == c_id).first()
-    if c:
-        c.montant_paye += c.mensualite
-        db.commit()
-    return {"message": "ok"}
+    if c: c.montant_paye += c.mensualite; db.commit(); return {"ok": True}
