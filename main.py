@@ -1,3 +1,4 @@
+import os
 from fastapi import FastAPI, Depends, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import create_engine, Column, Integer, String, Float, Date, ForeignKey
@@ -6,18 +7,24 @@ from pydantic import BaseModel
 from datetime import date
 
 # ==========================================
-# 1. CONFIGURATION BASE DE DONNÉES (SUPABASE)
+# 1. CONFIGURATION DB (SUPABASE CLOUD PRO)
 # ==========================================
-# ⚠️ ATTENTION: Bdell [YOUR-PASSWORD] b l'mot de passe dyalek s7i7 bla m39oufat []
-SQLALCHEMY_DATABASE_URL = "postgresql://postgres:AgenceAuto2026Pro@db.nkpwevsanpauwkqcoobg.supabase.co:5432/postgres"
+# Khdemna b Port 6543 dyal PgBouncer hit Render kiyhtaj Connection Pooling
+# sslmode=require darouriya bach l'Cloud y9bel l'connexion sécurisée
+SQLALCHEMY_DATABASE_URL = "postgresql://postgres:AgenceAuto2026Pro@db.nkpwevsanpauwkqcoobg.supabase.co:6543/postgres?sslmode=require"
 
-# 7iydna connect_args dyal SQLite 7it PostgreSQL pro w kheddam mzyan f l'Cloud
-engine = create_engine(SQLALCHEMY_DATABASE_URL)
+# pool_pre_ping: Bach n-testiw l'connexion qbel ma nkhdmo biha (ma-ytfach l'serveur)
+engine = create_engine(
+    SQLALCHEMY_DATABASE_URL, 
+    pool_pre_ping=True,
+    pool_size=10, 
+    max_overflow=20
+)
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 Base = declarative_base()
 
 # ==========================================
-# 2. MODÈLES DE BASE DE DONNÉES (TABLES)
+# 2. MODÈLES DE BASE DE DONNÉES
 # ==========================================
 class VoitureDB(Base):
     __tablename__ = "voitures"
@@ -35,6 +42,7 @@ class LocationDB(Base):
     date_retour = Column(Date)
     prix_total = Column(Float)
     montant_paye = Column(Float, default=0.0)
+    caution = Column(String, default="Aucune")
     statut = Column(String, default="En cours")
     
     voiture = relationship("VoitureDB")
@@ -59,11 +67,11 @@ class CreditDB(Base):
     
     voiture = relationship("VoitureDB")
 
-# Hna Python kaymchi l Supabase w kaycreer les tables bohdou ila makanoch
+# Create tables in Supabase
 Base.metadata.create_all(bind=engine)
 
 # ==========================================
-# 3. SCHÉMAS PYDANTIC (Validation des données)
+# 3. SCHÉMAS PYDANTIC
 # ==========================================
 class VoitureCreate(BaseModel): 
     marque: str
@@ -76,6 +84,7 @@ class LocationCreate(BaseModel):
     date_retour: date
     prix_total: float
     montant_paye: float
+    caution: str
 
 class PaiementUpdate(BaseModel): 
     montant_ajoute: float
@@ -96,9 +105,9 @@ class LoginData(BaseModel):
     password: str
 
 # ==========================================
-# 4. INITIALISATION DE L'APPLICATION
+# 4. APP & MIDDLEWARE
 # ==========================================
-app = FastAPI(title="AutoPro ERP API - Cloud Version")
+app = FastAPI(title="AutoPro ERP Cloud")
 
 app.add_middleware(
     CORSMiddleware, 
@@ -116,121 +125,94 @@ def get_db():
         db.close()
 
 # ==========================================
-# 5. ROUTES / APIs
+# 5. ROUTES API
 # ==========================================
 
-# --- SÉCURITÉ (LOGIN) ---
 @app.post("/api/login/")
 def login(data: LoginData):
     if data.username == "admin" and data.password == "agence2026":
-        return {"success": True, "message": "Mrehba bik a l'M3ellem!"}
-    else:
-        raise HTTPException(status_code=401, detail="L'username wla l'mot de passe ghalat!")
-
-# --- VOITURES (FLOTTE) ---
-@app.post("/api/voitures/")
-def add_voiture(v: VoitureCreate, db: Session = Depends(get_db)):
-    db.add(VoitureDB(**v.dict()))
-    db.commit()
-    return {"message": "Voiture ajoutée b naja7"}
+        return {"success": True}
+    raise HTTPException(status_code=401, detail="Error")
 
 @app.get("/api/voitures/")
-def get_voitures(db: Session = Depends(get_db)): 
+def get_voitures(db: Session = Depends(get_db)):
     return db.query(VoitureDB).all()
 
-# --- LOCATIONS (KRIYA) ---
+@app.post("/api/voitures/")
+def add_voiture(v: VoitureCreate, db: Session = Depends(get_db)):
+    db_v = VoitureDB(**v.dict())
+    db.add(db_v)
+    db.commit()
+    return {"message": "ok"}
+
 @app.post("/api/locations/")
 def add_location(loc: LocationCreate, db: Session = Depends(get_db)):
     db_loc = LocationDB(**loc.dict())
     db.add(db_loc)
-    
-    # Nbadlou statut dyal tomobila
-    voiture = db.query(VoitureDB).filter(VoitureDB.id == loc.voiture_id).first()
-    if voiture: 
-        voiture.statut = "En Location"
-        
+    v = db.query(VoitureDB).filter(VoitureDB.id == loc.voiture_id).first()
+    if v: v.statut = "En Location"
     db.commit()
-    return {"message": "Location enregistrée"}
+    return {"message": "ok"}
 
 @app.get("/api/locations/")
 def get_locations(db: Session = Depends(get_db)):
-    # Njibou l'kriyat mretbin mn jdid lqdim (Order By Desc)
     locations = db.query(LocationDB).order_by(LocationDB.id.desc()).all()
     return [{
-        "id": l.id, 
-        "voiture_id": l.voiture_id, 
-        "marque": l.voiture.marque, 
-        "matricule": l.voiture.matricule, 
-        "date_sortie": l.date_sortie, 
-        "date_retour": l.date_retour, 
-        "jours": l.jours, 
-        "prix_total": l.prix_total, 
-        "montant_paye": l.montant_paye, 
-        "reste": l.prix_total - l.montant_paye, 
-        "statut": l.statut
+        "id": l.id, "voiture_id": l.voiture_id, "marque": l.voiture.marque,
+        "matricule": l.voiture.matricule, "date_sortie": l.date_sortie,
+        "date_retour": l.date_retour, "jours": l.jours, "prix_total": l.prix_total,
+        "montant_paye": l.montant_paye, "reste": l.prix_total - l.montant_paye,
+        "caution": l.caution, "statut": l.statut
     } for l in locations]
 
 @app.put("/api/locations/{loc_id}/payer")
-def payer_reste(loc_id: int, paiement: PaiementUpdate, db: Session = Depends(get_db)):
+def payer_reste(loc_id: int, p: PaiementUpdate, db: Session = Depends(get_db)):
     loc = db.query(LocationDB).filter(LocationDB.id == loc_id).first()
-    if loc: 
-        loc.montant_paye += paiement.montant_ajoute
+    if loc:
+        loc.montant_paye += p.montant_ajoute
         db.commit()
-    return {"message": "Khlas dzad"}
+    return {"message": "ok"}
 
 @app.put("/api/locations/{loc_id}/retourner")
 def retourner_voiture(loc_id: int, db: Session = Depends(get_db)):
     loc = db.query(LocationDB).filter(LocationDB.id == loc_id).first()
     if loc:
         loc.statut = "Terminée"
-        voiture = db.query(VoitureDB).filter(VoitureDB.id == loc.voiture_id).first()
-        if voiture: 
-            voiture.statut = "Disponible" 
+        v = db.query(VoitureDB).filter(VoitureDB.id == loc.voiture_id).first()
+        if v: v.statut = "Disponible"
         db.commit()
-    return {"message": "Tomobila rj3at l'garage"}
+    return {"message": "ok"}
 
-# --- DÉPENSES (MASARIF) ---
 @app.post("/api/depenses/")
 def add_depense(dep: DepenseCreate, db: Session = Depends(get_db)):
     db.add(DepenseDB(**dep.dict()))
     db.commit()
-    return {"message": "Dépense ajoutée"}
+    return {"message": "ok"}
 
 @app.get("/api/depenses/")
 def get_depenses(db: Session = Depends(get_db)):
-    depenses = db.query(DepenseDB).all()
-    return [{
-        "id": d.id, 
-        "voiture_id": d.voiture_id, 
-        "marque": d.voiture.marque, 
-        "montant": d.montant, 
-        "date_depense": d.date_depense
-    } for d in depenses]
+    deps = db.query(DepenseDB).all()
+    return [{"marque": d.voiture.marque, "montant": d.montant, "date": d.date_depense, "voiture_id": d.voiture_id} for d in deps]
 
-# --- CRÉDITS BANKA ---
 @app.post("/api/credits/")
-def add_credit(cred: CreditCreate, db: Session = Depends(get_db)):
-    db.add(CreditDB(**cred.dict()))
+def add_credit(c: CreditCreate, db: Session = Depends(get_db)):
+    db.add(CreditDB(**c.dict()))
     db.commit()
-    return {"message": "Crédit ajouté"}
+    return {"message": "ok"}
 
 @app.get("/api/credits/")
 def get_credits(db: Session = Depends(get_db)):
     credits = db.query(CreditDB).all()
     return [{
-        "id": c.id, 
-        "marque": c.voiture.marque, 
-        "matricule": c.voiture.matricule, 
-        "montant_total": c.montant_total, 
-        "mensualite": c.mensualite, 
-        "montant_paye": c.montant_paye, 
-        "reste": c.montant_total - c.montant_paye
+        "id": c.id, "marque": c.voiture.marque, "matricule": c.voiture.matricule,
+        "montant_total": c.montant_total, "mensualite": c.mensualite,
+        "montant_paye": c.montant_paye, "reste": c.montant_total - c.montant_paye
     } for c in credits]
 
-@app.put("/api/credits/{cred_id}/payer")
-def payer_traita(cred_id: int, db: Session = Depends(get_db)):
-    cred = db.query(CreditDB).filter(CreditDB.id == cred_id).first()
-    if cred: 
-        cred.montant_paye += cred.mensualite
+@app.put("/api/credits/{c_id}/payer")
+def payer_traita(c_id: int, db: Session = Depends(get_db)):
+    c = db.query(CreditDB).filter(CreditDB.id == c_id).first()
+    if c:
+        c.montant_paye += c.mensualite
         db.commit()
-    return {"message": "Traita d chhar tkhlsat b naja7"}
+    return {"message": "ok"}
