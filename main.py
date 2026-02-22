@@ -19,7 +19,7 @@ from passlib.context import CryptContext
 # ==========================================
 # Zewwelna os.getenv w dkhlna l'ma3loumat mobachara
 
-DATABASE_URL = "postgresql://postgres:AgenceAuto2026Pro@aws-0-eu-central-1.pooler.supabase.com:6543/postgres?sslmode=require"
+DATABASE_URL = "postgresql://postgres.nkpwevsanpauwkqcoobg:AgenceAuto2026Pro@aws-1-eu-west-1.pooler.supabase.com:6543/postgres?sslmode=require"
 JWT_SECRET = "AgenceAutoSuperSecretKey2026"
 ADMIN_USERNAME = "admin"
 ADMIN_PASSWORD = "agence2026"
@@ -407,3 +407,4 @@ def get_dashboard(db: Session = Depends(get_db), _user: str = Depends(verify_tok
 @app.get("/health")
 def health():
     return {"status": "ok", "version": "3.0.0"}
+
